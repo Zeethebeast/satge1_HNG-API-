@@ -1,24 +1,22 @@
-# Use an official lightweight Python image
+# Use official lightweight Python image
 FROM python:3.12-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set working directory inside container
+# Set working directory
 WORKDIR /app
 
-# Copy requirements first (for caching)
-COPY requirements.txt .
+# Copy project files into the container
+COPY . /app
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project into the container
-COPY . .
-
-# Expose the port Flask runs on
+# Expose port Flask will run on
 EXPOSE 5000
 
-# Start the server using Waitress
-CMD ["python", "app.py"]
+# Set environment variable to tell Flask to run
+ENV FLASK_APP=app.py
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_RUN_PORT=5000
+
+# Run the Flask server
+CMD ["flask", "run"]
