@@ -5,16 +5,14 @@ import os
 
 app = Flask(__name__)
 
-# In-memory database
+# In-memory store
 strings_data = {}
 
-# ----------- Utility Functions -----------
-
+# ---------- Utility functions ----------
 def check_length(value):
     return len(value)
 
 def is_palindrome(value):
-    """Check palindrome (case-insensitive, ignoring spaces)."""
     cleaned = ''.join(ch.lower() for ch in value if ch.isalnum())
     return cleaned == cleaned[::-1]
 
@@ -34,7 +32,6 @@ def sha256_hash(value):
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
 def analyze_string(value):
-    """Perform all analysis on the string."""
     return {
         "string": value,
         "length": check_length(value),
@@ -45,11 +42,10 @@ def analyze_string(value):
         "sha256": sha256_hash(value),
     }
 
-# ----------- 1️⃣ POST /string -----------
 
-@app.route("/string", methods=["POST"])
+# ---------- 1️⃣ POST /strings ----------
+@app.route("/strings", methods=["POST"])
 def create_string():
-    """Analyze and store a new string."""
     data = request.get_json(silent=True)
 
     if not data or "value" not in data:
@@ -65,32 +61,28 @@ def create_string():
 
     result = analyze_string(value)
     strings_data[value] = result
-
     return jsonify(result), 201
 
 
-# ----------- 2️⃣ GET /string/<string_value> -----------
-
-@app.route("/string/<string_value>", methods=["GET"])
+# ---------- 2️⃣ GET /strings/<string_value> ----------
+@app.route("/strings/<string_value>", methods=["GET"])
 def get_string(string_value):
-    """Retrieve analysis for a specific string."""
     result = strings_data.get(string_value)
     if not result:
         return jsonify({"error": "String not found"}), 404
     return jsonify(result), 200
 
 
-# ----------- 3️⃣ GET /string -----------
-
-@app.route("/string", methods=["GET"])
+# ---------- 3️⃣ GET /strings ----------
+@app.route("/strings", methods=["GET"])
 def get_all_strings():
-    """Retrieve all or filtered strings."""
+    # No query params → return all
     if not request.args:
         return jsonify(list(strings_data.values())), 200
 
     filtered = list(strings_data.values())
 
-    # Filter by is_palindrome
+    # Query filters
     if "is_palindrome" in request.args:
         val = request.args.get("is_palindrome").lower()
         if val not in ["true", "false"]:
@@ -98,7 +90,6 @@ def get_all_strings():
         bool_val = val == "true"
         filtered = [s for s in filtered if s["is_palindrome"] == bool_val]
 
-    # Filter by length_gt
     if "length_gt" in request.args:
         try:
             limit = int(request.args.get("length_gt"))
@@ -106,7 +97,6 @@ def get_all_strings():
         except ValueError:
             return jsonify({"error": "Invalid length_gt value"}), 422
 
-    # Filter by word_count
     if "word_count" in request.args:
         try:
             count = int(request.args.get("word_count"))
@@ -114,60 +104,51 @@ def get_all_strings():
         except ValueError:
             return jsonify({"error": "Invalid word_count value"}), 422
 
-    # Natural language parsing (basic keyword detection)
-    if "query" in request.args:
-        keyword = request.args.get("query").lower()
-        filtered = [
-            s for s in filtered
-            if keyword in s["string"].lower()
-            or keyword in s["sha256"]
-        ]
-
     return jsonify(filtered), 200
 
 
-# ----------- 4️⃣ DELETE /string/<string_value> -----------
+# ---------- 4️⃣ GET /strings/filter-by-natural-language ----------
+@app.route("/strings/filter-by-natural-language", methods=["GET"])
+def filter_by_natural_language():
+    """Example: ?query=palindrome or ?query=long"""
+    query = request.args.get("query", "").lower()
+    if not query:
+        return jsonify({"error": "Missing query parameter"}), 400
 
-@app.route("/string/<string_value>", methods=["DELETE"])
+    results = []
+    for s in strings_data.values():
+        if ("palindrome" in query and s["is_palindrome"]) or \
+           ("long" in query and s["length"] > 10) or \
+           ("short" in query and s["length"] <= 5) or \
+           ("unique" in query and len(s["unique_characters"]) > 5):
+            results.append(s)
+
+    return jsonify(results), 200
+
+
+# ---------- 5️⃣ DELETE /strings/<string_value> ----------
+@app.route("/strings/<string_value>", methods=["DELETE"])
 def delete_string(string_value):
-    """Delete a specific string."""
     if string_value not in strings_data:
         return jsonify({"error": "String not found"}), 404
     del strings_data[string_value]
     return "", 204
 
 
-# ----------- 5️⃣ GET /string/matches/<string_value> -----------
-
-@app.route("/string/matches/<string_value>", methods=["GET"])
-def find_matches(string_value):
-    """Return similar strings to a given input."""
-    if not strings_data:
-        return jsonify({"error": "No strings available"}), 404
-
-    all_strings = list(strings_data.keys())
-    matches = difflib.get_close_matches(string_value, all_strings, n=5, cutoff=0.4)
-
-    return jsonify({"matches": matches}), 200
-
-
-# ----------- Root Route (for sanity check) -----------
-
+# ---------- 6️⃣ Root ----------
 @app.route("/")
 def home():
     return jsonify({
-        "message": "Welcome to the String Analysis API!",
-        "available_endpoints": [
-            "POST /string",
-            "GET /string",
-            "GET /string/<string_value>",
-            "DELETE /string/<string_value>",
-            "GET /string/matches/<string_value>"
+        "message": "Welcome to the String Analyzer API",
+        "routes": [
+            "POST /strings",
+            "GET /strings",
+            "GET /strings/<string_value>",
+            "DELETE /strings/<string_value>",
+            "GET /strings/filter-by-natural-language"
         ]
     }), 200
 
-
-# ----------- Run server with dynamic port -----------
 
 if __name__ == "__main__":
     from waitress import serve
